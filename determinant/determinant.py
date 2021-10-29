@@ -2,7 +2,7 @@ import math
 import numpy as np
 import sympy as sp
 from sympy.abc import lamda
-from util import get_dtype, evector
+from .util import get_dtype, evector
 
 
 # Bareiss algorithm
