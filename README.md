@@ -4,7 +4,7 @@
 ### Explicit Matrix power method for the Clow-based algorithm ###
 If we follow the Dynamic Programming approach of the clow-based method, we obtain a simple expression for the determinant and all the coefficients of the charasteristic polynomial.
 
-<img src="https://render.githubusercontent.com/render/math?math=P_{A}(\lambda):=\operatorname{det}(\lambda I-A)=q_{n} \lambda^{n}%2Bq_{n-1} \lambda^{n-1}%2B\cdots%2Bq_{1} \lambda+q_{0}">
+<img src="https://render.githubusercontent.com/render/math?math=P_{A}(\lambda):=\operatorname{det}(\lambda I-A)=q_{n} \lambda^{n}%2Bq_{n-1} \lambda^{n-1}%2B\cdots%2Bq_{1} \lambda%2Bq_{0}">
 
 with
 
