@@ -1,4 +1,4 @@
-## Symbolic, exact and division-free computataion algorithms for the determinant and the characteristic polynomial ##
+## Symbolic, exact and division-free computation algorithms for the determinant and the characteristic polynomial ##
 
 
 ### Explicit Matrix power method for the Clow-based algorithm ###
