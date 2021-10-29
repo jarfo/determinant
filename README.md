@@ -10,7 +10,7 @@ with
 
 <img src="https://render.githubusercontent.com/render/math?math=q_{i} = rM^{n-i}s">
 
-where M is matrix is the 'transition matrix' of the dynamic algorithm as described in [Rote], s corresponds to the initial conditions and r to the final collecting node.
+where M is the 'transition matrix' of the dynamic algorithm as described in [Rote], s corresponds to the initial conditions and r to the final collecting node.
 
 For n=3 we have:
 
