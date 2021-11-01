@@ -72,12 +72,12 @@ def DPcoefs(A):
     n = A.shape[0]
     D = np.eye(n, dtype=object)
     diag = np.zeros(n, dtype=object)
-    sign = -1
     coefs = [1]
     for i in range(n):
         D = np.triu(D @ A)
-        coefs.append(sign*D.diagonal().sum())
-        diag[1:] = -D.diagonal().cumsum()[0:-1]
+        cumsum = D.diagonal().cumsum()
+        coefs.append(-cumsum[-1])
+        diag[1:] = -cumsum[0:-1]
         np.fill_diagonal(D, diag)
 
     return coefs
