@@ -165,10 +165,9 @@ def MPcharpoly(A):
 # 3.2 Adding a Vertex at a Time: Combinatorial Approach
 def CVcoefs(A):
     n = A.shape[0]
-    A = np.array(A, dtype=get_dtype(A))
     sign = -1 if n % 2 else 1
 
-    P = [-1, A[n-1, n-1]]
+    P = np.array([-1, A[n-1, n-1]], dtype=get_dtype(A))
     for i in range(n-2, -1, -1):
         r = A[i, i+1:]
         s = A[i+1:, i]
@@ -178,7 +177,7 @@ def CVcoefs(A):
         for j in range(n - i - 2):
             rM = rM @ M
             D.append(rM @ s)
-        P = np.convolve(P, D, mode='valid')
+        P = np.correlate(D, P[::-1], mode='valid')
 
     return sign*P
 
