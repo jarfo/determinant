@@ -4,7 +4,7 @@
 ### Explicit Matrix power method for the Clow-based algorithm ###
 If we follow the Dynamic Programming approach of the clow-based method, we obtain a simple expression for the determinant and all the coefficients of the charasteristic polynomial.
 
-<img src="https://render.githubusercontent.com/render/math?math=P_{A}(\lambda):=\operatorname{det}(\lambda I-A)=q_{n} \lambda^{n}%2Bq_{n-1} \lambda^{n-1}%2B\cdots%2Bq_{1} \lambda%2Bq_{0}">
+<img src="https://render.githubusercontent.com/render/math?math=P_%7BA%7D(%5Clambda)%3A%3D%5Cmathrm%7Bdet%7D(%5Clambda%20I-A)%3Dq_%7Bn%7D%20%5Clambda%5E%7Bn%7D%2Bq_%7Bn-1%7D%20%5Clambda%5E%7Bn-1%7D%2B%5Ccdots%2Bq_%7B1%7D%20%5Clambda%2Bq_%7B0%7D">
 
 with
 
@@ -14,12 +14,14 @@ where M is the 'transition matrix' of the dynamic algorithm as described in [Rot
 
 For n=3 we have:
 
-<img src="https://render.githubusercontent.com/render/math?math=r = [0, 0, 0, 0, 0, 0, 1]">
-<img src="https://render.githubusercontent.com/render/math?math=s = [0, 0, 1, 0, 1, 1, 1]^t">
+<img src="https://render.githubusercontent.com/render/math?math=r%3D%5Cleft%5B%5Cbegin%7Barray%7D%7Blllllll%7D%0A0%20%26%200%20%26%200%20%26%200%20%26%200%20%26%200%20%26%201%0A%5Cend%7Barray%7D%5Cright%5D">,
 
-and M is:
 
-![M](M3.png)
+<img src="https://render.githubusercontent.com/render/math?math=s%3D%5Cleft%5B%5Cbegin%7Barray%7D%7Blllllll%7D%0A1%20%26%200%20%26%200%20%26%201%20%26%200%20%26%201%20%26%201%0A%5Cend%7Barray%7D%5Cright%5D">,
+
+and
+
+<img src="https://render.githubusercontent.com/render/math?math=M%20%3D%20%5Cleft%5B%5Cbegin%7Barray%7D%7Bccccccc%7D%0A0%20%26%200%20%26%200%20%26%200%20%26%200%20%26%200%20%26%200%20%5C%5C%0Aa_%7B10%7D%20%26%20a_%7B11%7D%20%26%20a_%7B12%7D%20%26%200%20%26%200%20%26%200%20%26%200%20%5C%5C%0Aa_%7B20%7D%20%26%20a_%7B21%7D%20%26%20a_%7B22%7D%20%26%200%20%26%200%20%26%200%20%26%200%20%5C%5C%0A-a_%7B00%7D%20%26%20-a_%7B01%7D%20%26%20-a_%7B02%7D%20%26%200%20%26%200%20%26%200%20%26%200%20%5C%5C%0A0%20%26%200%20%26%200%20%26%20a_%7B21%7D%20%26%20a_%7B22%7D%20%26%200%20%26%200%20%5C%5C%0A-a_%7B00%7D%20%26%20-a_%7B01%7D%20%26%20-a_%7B02%7D%20%26%20-a_%7B11%7D%20%26%20-a_%7B12%7D%20%26%200%20%26%200%20%5C%5C%0A-a_%7B00%7D%20%26%20-a_%7B01%7D%20%26%20-a_%7B02%7D%20%26%20-a_%7B11%7D%20%26%20-a_%7B12%7D%20%26%20-a_%7B22%7D%20%26%200%0A%5Cend%7Barray%7D%5Cright%5D">
 
 
 
