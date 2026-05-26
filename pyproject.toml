@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "determinant"
+version = "0.1.0"
+description = "Symbolic, exact and division-free computation algorithms for the determinant and the characteristic polynomial"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name = "Jose A. R. Fonollosa" },
+]
+dependencies = [
+    "numpy",
+    "sympy",
+]
+
+[project.optional-dependencies]
+notebook = ["jupyter"]
+
+[project.urls]
+Homepage = "https://github.com/jarfo/determinant"
+
+[tool.setuptools.packages.find]
+include = ["determinant*"]
+
+[tool.ruff]
+line-length = 128
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["determinant"]

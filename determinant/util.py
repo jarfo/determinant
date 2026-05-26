@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def get_dtype(A):
+def get_dtype(A) -> type:
     return A.dtype if hasattr(A, 'dtype') else object
 
 def evector(n, i=0, dtype=int):

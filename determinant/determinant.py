@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import sympy as sp
 from sympy.abc import lamda
@@ -165,9 +164,11 @@ def MPcharpoly(A):
 # 3.2 Adding a Vertex at a Time: Combinatorial Approach
 def CVcoefs(A):
     n = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
     sign = -1 if n % 2 else 1
 
-    P = np.array([-1, A[n-1, n-1]], dtype=get_dtype(A))
+    P = np.array([-1, A[n-1, n-1]], dtype=dtype)
     for i in range(n-2, -1, -1):
         r = A[i, i+1:]
         s = A[i+1:, i]
@@ -242,6 +243,59 @@ def CHcharpoly(A):
     return sp.PurePoly(p, lamda)
 
 
+# Bivariate Cayley-Hamilton recursion
+#
+# "On the gradient of the coefficient of the characteristic polynomial", Christian Ikenmeyer (2025)
+# Proposition 2.6, eq. (2.8):
+#   chi_{n,d} = chi_{n-1,d} + sum_{i=1}^{d} (-1)^{i+1} chi_{n,d-i} * pow_{n,i}
+# where chi_{n,d} is the sum of d-by-d principal minors of the leading n-by-n submatrix
+# (the d-th elementary symmetric polynomial of its eigenvalues) and pow_{n,i} = [X_n^i]_{n,n}.
+def BCHcoefs(A):
+    N = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
+
+    chi = [1]
+    for n in range(1, N+1):
+        Xn = A[:n, :n]
+        # pows[i] = [X_n^{i+1}]_{n,n}, computed via the row-vector recurrence
+        # r_k = e_n^T X_n^k, so pows[i] = r_{i+1}[n-1]. Avoids materializing full
+        # matrix powers and drops per-step work from O(n^3) to O(n^2).
+        pows = np.zeros(n, dtype=dtype)
+        r = np.zeros(n, dtype=dtype)
+        r[n-1] = 1
+        for i in range(n):
+            r = r @ Xn
+            pows[i] = r[n-1]
+
+        new_chi = [1]
+        for d in range(1, n+1):
+            val = chi[d] if d < n else 0
+            for i in range(1, d+1):
+                term = new_chi[d-i] * pows[i-1]
+                val = val + term if i % 2 == 1 else val - term
+            new_chi.append(val)
+        chi = new_chi
+
+    return [(-1)**d * chi[d] for d in range(N+1)]
+
+
+# Bivariate Cayley-Hamilton recursion
+def BCHdet(A):
+    n = A.shape[0]
+    coefs = BCHcoefs(A)
+    det = coefs[-1] * (-1)**n
+    return det
+
+
+# Bivariate Cayley-Hamilton recursion
+def BCHcharpoly(A):
+    n = A.shape[0]
+    coefs = BCHcoefs(A)
+    p = np.sum([c * lamda**(n-i) for i, c in enumerate(coefs)])
+    return sp.PurePoly(p, lamda)
+
+
 if __name__ == "__main__":
     import timeit
 
@@ -252,6 +306,7 @@ if __name__ == "__main__":
         assert FLcharpoly(M) == sp.Matrix(M).charpoly()
         assert MPcharpoly(M) == sp.Matrix(M).charpoly()
         assert DPcharpoly(M) == sp.Matrix(M).charpoly()
+        assert BCHcharpoly(M) == sp.Matrix(M).charpoly()
 
     for n in [15, 20]:
         A = np.random.randint(0, 100, size=(n, n), dtype=int).astype(object)
@@ -260,6 +315,7 @@ if __name__ == "__main__":
         print(CVdet(A))
         print(MPdet(A))
         print(FLdet(A))
+        print(BCHdet(A))
 
     # print(timeit.repeat("numpy.linalg.det(A)", setup="import numpy; from __main__ import A", number=100, repeat=5))
     #: [0.0035009384155273, 0.0033931732177734, 0.0033941268920898, 0.0033800601959229, 0.0033988952636719]
@@ -268,3 +324,4 @@ if __name__ == "__main__":
     print(timeit.repeat("CVdet(A)", setup="from __main__ import CVdet, A", number=10, repeat=5))
     print(timeit.repeat("MPdet(A)", setup="from __main__ import MPdet, A", number=10, repeat=5))
     print(timeit.repeat("FLdet(A)", setup="from __main__ import FLdet, A", number=10, repeat=5))
+    print(timeit.repeat("BCHdet(A)", setup="from __main__ import BCHdet, A", number=10, repeat=5))
