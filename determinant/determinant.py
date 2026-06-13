@@ -150,27 +150,31 @@ def MPdet(A):
     return det
 
 
-# Clow-based algorithm. Cofactor matrix by differentiating MPdet.
+# Clow-based algorithm. Gradients of every characteristic-polynomial coefficient.
 #
-# MPdet computes det(A) = (-1)^n * r @ M^n @ s, where M = M(A) is built linearly
-# from the entries of A by DPmatrix. Differentiating w.r.t. an entry A[a, b]:
+# MPcoefs computes coefs[i] = r @ M^i @ s, the coefficient of lambda^{n-i} in
+# det(lambda*I - A); MPdet just reads off the last one. Because r and s are
+# constant and M = M(A) is linear in A, the SAME forward sweep L_k = r @ M^k and
+# backward sweep R_k = M^k @ s yield the gradient of EVERY coefficient at once:
 #
-#   d det / d A[a,b] = (-1)^n * sum_{k=0}^{n-1} (r @ M^k) @ (dM/dA[a,b]) @ (M^{n-1-k} @ s)
+#   d coefs[i] / d A[a,b] = sum_{k=0}^{i-1} (r @ M^k) @ (dM/dA[a,b]) @ (M^{i-1-k} @ s)
+#                         = <dM/dA[a,b], W_i>,  W_i = sum_{k=0}^{i-1} outer(L_k, R_{i-1-k}).
 #
-# Collecting the left powers L_k = r @ M^k and right powers R_k = M^k @ s, and
-# W = sum_k outer(L_k, R_{n-1-k}), every cofactor is (-1)^n * <dM/dA[a,b], W>.
-# Since each M[u, v] is 0 or +/- A[a, b], W[u, v] is routed back to A[a, b]
-# through the same construction DPmatrix uses, with the matching sign.
+# W_i is the discrete convolution of the two sweeps, so all of them come from a
+# single pass. Since each M[u, v] is 0 or +/- A[a, b], W_i[u, v] is routed back
+# through DPmatrix's construction (with the matching sign) to form the gradient
+# cofactors[i] = d coefs[i] / d A.
 #
-# The result G[i, j] = d det / d A[i, j] is the cofactor matrix, i.e. the
-# transpose of the classical adjugate: adj(A) = G.T = det(A) * inv(A).T.T.
-def MPcofactor(A):
+# These gradients are the coefficient matrices of the resolvent expansion
+#   adj(lambda*I - A) = sum_{i=0}^{n} (-cofactors[i].T) * lambda^{n-i},
+# the determinant's cofactor matrix being the last one (see MPcofactor).
+def MPcofactors(A):
     n = A.shape[0]
     M, r, s = DPmatrix(A)
     m = M.shape[0]
     dtype = get_dtype(A)
 
-    # L[k] = r @ M^k, R[k] = M^k @ s, for k = 0..n-1
+    # Forward sweep L[k] = r @ M^k and backward sweep R[k] = M^k @ s, k = 0..n-1.
     L = np.zeros((n, m), dtype=dtype)
     R = np.zeros((n, m), dtype=dtype)
     Mk_r, Mk_s = r, s
@@ -180,26 +184,43 @@ def MPcofactor(A):
         Mk_r = Mk_r @ M
         Mk_s = M @ Mk_s
 
-    # W[u, v] = sum_{k=0}^{n-1} L[k][u] * R[n-1-k][v]
-    W = np.zeros((m, m), dtype=dtype)
-    for k in range(n):
-        W += np.outer(L[k], R[n-1-k])
+    # cofactors[i] = d coefs[i] / d A; cofactors[0] = d(1)/dA = 0.
+    cofactors = [np.zeros((n, n), dtype=dtype)]
+    for i in range(1, n + 1):
+        # W[u, v] = sum_{k=0}^{i-1} L[k][u] * R[i-1-k][v]
+        W = np.zeros((m, m), dtype=dtype)
+        for k in range(i):
+            W += np.outer(L[k], R[i - 1 - k])
 
-    # Mirror DPmatrix's construction, routing W back to the gradient with sign.
-    G = np.zeros((n, n), dtype=dtype)
-    d = 0
-    for i in range(n+1):
-        p = 0
-        for j in range(i):
-            # M[d, p:p + n - j] = -A[j, j:]
-            G[j, j:] -= W[d, p:p + n - j]
-            p += n - j
-        if i < n:
-            # M[d + 1:d + n - i, d:d + n - i] = A[i + 1:, i:]
-            G[i + 1:, i:] += W[d + 1:d + n - i, d:d + n - i]
-        d += n - i
+        # Mirror DPmatrix's construction, routing W back to the gradient with sign.
+        G = np.zeros((n, n), dtype=dtype)
+        d = 0
+        for b in range(n + 1):
+            p = 0
+            for j in range(b):
+                # M[d, p:p + n - j] = -A[j, j:]
+                G[j, j:] -= W[d, p:p + n - j]
+                p += n - j
+            if b < n:
+                # M[d + 1:d + n - b, d:d + n - b] = A[b + 1:, b:]
+                G[b + 1:, b:] += W[d + 1:d + n - b, d:d + n - b]
+            d += n - b
+        cofactors.append(G)
 
-    return (-1)**n * G
+    return cofactors
+
+
+# Clow-based algorithm. Cofactor matrix (entrywise derivative of the determinant).
+#
+# det(A) = (-1)^n * coefs[-1], so the cofactor matrix d det / d A is the last
+# coefficient gradient from MPcofactors, scaled by (-1)^n. The result
+# G[i, j] = d det / d A[i, j] is the transpose of the classical adjugate:
+# adj(A) = G.T = det(A) * inv(A).
+def MPcofactor(A):
+    n = A.shape[0]
+    cofactors = MPcofactors(A)
+    cofactor = cofactors[-1] * (-1)**n
+    return cofactor
 
 
 # Clow-based algorithm. Explicit Matrix power method for the Dynamic Programming According to Length

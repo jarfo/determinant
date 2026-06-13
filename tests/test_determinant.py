@@ -30,6 +30,7 @@ from determinant.determinant import (
     MPcharpoly,
     MPcoefs,
     MPcofactor,
+    MPcofactors,
     MPdet,
 )
 
@@ -185,6 +186,44 @@ def test_mpcofactor_float_matches_inverse(n):
     G = np.array(MPcofactor(A), dtype=float)
     ref = np.linalg.det(A) * np.linalg.inv(A).T
     assert np.allclose(G, ref, rtol=1e-6, atol=1e-9)
+
+
+# --------------------------------------------------------------------------- #
+# MPcofactors (gradients of every coefficient = resolvent/adjugate expansion) #
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("n", SYMBOLIC_SIZES)
+def test_mpcofactors_are_coef_gradients(n):
+    # MPcofactors(A)[i] == d MPcoefs(A)[i] / dA, entrywise.
+    M = symbolic_matrix(n)
+    coefs = MPcoefs(M)
+    G = MPcofactors(M)
+    assert len(G) == n + 1
+    assert all(
+        sp.expand(G[i][a, b] - sp.diff(coefs[i], M[a, b])) == 0
+        for i in range(n + 1)
+        for a in range(n)
+        for b in range(n)
+    )
+
+
+@pytest.mark.parametrize("n", SYMBOLIC_SIZES)
+def test_mpcofactors_resolvent_expansion(n):
+    # adj(lambda*I - A) == sum_i (-MPcofactors(A)[i].T) * lambda^(n-i).
+    M = symbolic_matrix(n)
+    lam = sp.Symbol("lam")
+    expected = (lam * sp.eye(n) - sp.Matrix(M)).adjugate()
+    G = MPcofactors(M)
+    got = sp.zeros(n, n)
+    for i in range(n + 1):
+        got += -sp.Matrix(G[i].tolist()).T * lam ** (n - i)
+    assert all(sp.expand(expected[a, b] - got[a, b]) == 0 for a in range(n) for b in range(n))
+
+
+@pytest.mark.parametrize("n", INTEGER_SIZES)
+def test_mpcofactor_reads_last_cofactors(n):
+    # MPcofactor(A) == MPcofactors(A)[-1] * (-1)^n, mirroring MPdet/MPcoefs.
+    A = integer_matrix(n)
+    assert np.array_equal(MPcofactor(A), MPcofactors(A)[-1] * (-1) ** n)
 
 
 # --------------------------------------------------------------------------- #
