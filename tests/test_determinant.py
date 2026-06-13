@@ -12,6 +12,8 @@ import sympy as sp
 from determinant.determinant import (
     BCHcharpoly,
     BCHcoefs,
+    BCHcofactor,
+    BCHcofactors,
     BCHdet,
     BRdet,
     CHcharpoly,
@@ -40,6 +42,11 @@ DET_FUNCS = [BRdet, FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet]
 GENERAL_DET_FUNCS = [FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet]
 COEFS_FUNCS = [FLcoefs, DPcoefs, MPcoefs, CVcoefs, CHcoefs, BCHcoefs]
 CHARPOLY_FUNCS = [FLcharpoly, DPcharpoly, MPcharpoly, CVcharpoly, CHcharpoly, BCHcharpoly]
+
+# Cofactor matrix (d det / dA) and the full list of coefficient gradients,
+# computed both via the matrix-power (MP) and Cayley-Hamilton (BCH) approaches.
+COFACTOR_FUNCS = [MPcofactor, BCHcofactor]
+COFACTORS_FUNCS = [MPcofactors, BCHcofactors]
 
 SYMBOLIC_SIZES = [1, 2, 3, 4]
 INTEGER_SIZES = [1, 2, 3, 5, 7, 10]
@@ -143,13 +150,14 @@ def test_dpmatrix_reproduces_determinant(n):
 
 
 # --------------------------------------------------------------------------- #
-# MPcofactor (cofactor matrix = entrywise derivative of the determinant)      #
+# Cofactor matrix (entrywise derivative of the determinant): MP and BCH        #
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("n", SYMBOLIC_SIZES)
-def test_mpcofactor_is_derivative_of_det(n):
+@pytest.mark.parametrize("cofactor", COFACTOR_FUNCS, **_by_name)
+def test_cofactor_is_derivative_of_det(cofactor, n):
     M = symbolic_matrix(n)
     det = sp.Matrix(M).det()
-    G = MPcofactor(M)
+    G = cofactor(M)
     assert all(
         sp.expand(G[i, j] - sp.diff(det, M[i, j])) == 0
         for i in range(n)
@@ -158,11 +166,12 @@ def test_mpcofactor_is_derivative_of_det(n):
 
 
 @pytest.mark.parametrize("n", SYMBOLIC_SIZES)
-def test_mpcofactor_equals_cofactor(n):
+@pytest.mark.parametrize("cofactor", COFACTOR_FUNCS, **_by_name)
+def test_cofactor_equals_cofactor_matrix(cofactor, n):
     # G[i, j] is the cofactor C_ij, i.e. the transpose of the classical adjugate.
     M = symbolic_matrix(n)
     adj = sp.Matrix(M).adjugate()
-    G = MPcofactor(M)
+    G = cofactor(M)
     assert all(
         sp.expand(G[i, j] - adj[j, i]) == 0
         for i in range(n)
@@ -171,32 +180,35 @@ def test_mpcofactor_equals_cofactor(n):
 
 
 @pytest.mark.parametrize("n", INTEGER_SIZES)
-def test_mpcofactor_integer_identity(n):
+@pytest.mark.parametrize("cofactor", COFACTOR_FUNCS, **_by_name)
+def test_cofactor_integer_identity(cofactor, n):
     # A @ adj(A)^T == A @ G.T == det(A) * I, exactly.
     A = integer_matrix(n)
-    G = MPcofactor(A)
+    G = cofactor(A)
     expected = np.zeros((n, n), dtype=object)
     np.fill_diagonal(expected, int(MPdet(A)))
     assert np.array_equal(A @ G.T, expected)
 
 
 @pytest.mark.parametrize("n", FLOAT_SIZES)
-def test_mpcofactor_float_matches_inverse(n):
+@pytest.mark.parametrize("cofactor", COFACTOR_FUNCS, **_by_name)
+def test_cofactor_float_matches_inverse(cofactor, n):
     A = float_matrix(n)
-    G = np.array(MPcofactor(A), dtype=float)
+    G = np.array(cofactor(A), dtype=float)
     ref = np.linalg.det(A) * np.linalg.inv(A).T
     assert np.allclose(G, ref, rtol=1e-6, atol=1e-9)
 
 
 # --------------------------------------------------------------------------- #
-# MPcofactors (gradients of every coefficient = resolvent/adjugate expansion) #
+# Coefficient gradients (resolvent/adjugate expansion): MP and BCH            #
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("n", SYMBOLIC_SIZES)
-def test_mpcofactors_are_coef_gradients(n):
-    # MPcofactors(A)[i] == d MPcoefs(A)[i] / dA, entrywise.
+@pytest.mark.parametrize("cofactors", COFACTORS_FUNCS, **_by_name)
+def test_cofactors_are_coef_gradients(cofactors, n):
+    # cofactors(A)[i] == d MPcoefs(A)[i] / dA, entrywise.
     M = symbolic_matrix(n)
     coefs = MPcoefs(M)
-    G = MPcofactors(M)
+    G = cofactors(M)
     assert len(G) == n + 1
     assert all(
         sp.expand(G[i][a, b] - sp.diff(coefs[i], M[a, b])) == 0
@@ -207,12 +219,13 @@ def test_mpcofactors_are_coef_gradients(n):
 
 
 @pytest.mark.parametrize("n", SYMBOLIC_SIZES)
-def test_mpcofactors_resolvent_expansion(n):
-    # adj(lambda*I - A) == sum_i (-MPcofactors(A)[i].T) * lambda^(n-i).
+@pytest.mark.parametrize("cofactors", COFACTORS_FUNCS, **_by_name)
+def test_cofactors_resolvent_expansion(cofactors, n):
+    # adj(lambda*I - A) == sum_i (-cofactors(A)[i].T) * lambda^(n-i).
     M = symbolic_matrix(n)
     lam = sp.Symbol("lam")
     expected = (lam * sp.eye(n) - sp.Matrix(M)).adjugate()
-    G = MPcofactors(M)
+    G = cofactors(M)
     got = sp.zeros(n, n)
     for i in range(n + 1):
         got += -sp.Matrix(G[i].tolist()).T * lam ** (n - i)
@@ -220,10 +233,39 @@ def test_mpcofactors_resolvent_expansion(n):
 
 
 @pytest.mark.parametrize("n", INTEGER_SIZES)
-def test_mpcofactor_reads_last_cofactors(n):
-    # MPcofactor(A) == MPcofactors(A)[-1] * (-1)^n, mirroring MPdet/MPcoefs.
+@pytest.mark.parametrize("cofactor, cofactors", zip(COFACTOR_FUNCS, COFACTORS_FUNCS),
+                         ids=lambda f: f.__name__)
+def test_cofactor_reads_last_cofactors(cofactor, cofactors, n):
+    # cofactor(A) == cofactors(A)[-1] * (-1)^n, mirroring MPdet/MPcoefs.
     A = integer_matrix(n)
-    assert np.array_equal(MPcofactor(A), MPcofactors(A)[-1] * (-1) ** n)
+    assert np.array_equal(cofactor(A), cofactors(A)[-1] * (-1) ** n)
+
+
+@pytest.mark.parametrize("n", INTEGER_SIZES)
+def test_bch_matches_mp_cofactors(n):
+    # The two algorithms compute identical coefficient gradients (exactly).
+    A = integer_matrix(n)
+    assert all(np.array_equal(b, m) for b, m in zip(BCHcofactors(A), MPcofactors(A)))
+
+
+@pytest.mark.parametrize("n", SYMBOLIC_SIZES)
+@pytest.mark.parametrize("cofactors", COFACTORS_FUNCS, **_by_name)
+def test_cofactors_satisfy_bivariate_cayley_hamilton(cofactors, n):
+    # Ikenmeyer (2025) Theorem 5.1: (grad chi_{n,d+1})^T == sum_i (-1)^i chi_{n,d-i} A^i.
+    # In the coefs convention coefs[d] = (-1)^d chi_{N,d}, so grad chi_{N,d} = (-1)^d G[d].
+    M = symbolic_matrix(n)
+    A = sp.Matrix(M)
+    coefs = MPcoefs(M)
+    chi = [(-1) ** d * coefs[d] for d in range(n + 1)]
+    G = cofactors(M)
+    grad_chi = [(-1) ** d * sp.Matrix(G[d].tolist()) for d in range(n + 1)]
+    powers = [A**i for i in range(n)]
+    for d in range(n):  # Theorem 5.1 for d = 0..n-1
+        lhs = grad_chi[d + 1].T
+        rhs = sp.zeros(n, n)
+        for i in range(d + 1):
+            rhs += (-1) ** i * chi[d - i] * powers[i]
+        assert all(sp.expand(lhs[a, b] - rhs[a, b]) == 0 for a in range(n) for b in range(n))
 
 
 # --------------------------------------------------------------------------- #

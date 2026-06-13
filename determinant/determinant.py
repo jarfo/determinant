@@ -370,6 +370,49 @@ def BCHcharpoly(A):
     return sp.PurePoly(p, lamda)
 
 
+# Bivariate Cayley-Hamilton recursion. Gradients of every coefficient.
+#
+# "On the gradient of the coefficient of the characteristic polynomial",
+# Christian Ikenmeyer (2025), Theorem 5.1 (Bivariate Cayley-Hamilton):
+#   (grad chi_{n,d+1})^T = sum_{i=0}^{d} (-1)^i chi_{n,d-i} X_n^i,
+# where chi_{n,d} is the sum of d-by-d principal minors of the leading n-by-n
+# submatrix and grad has entries d/dA[a,b]. Corollary 2.2 (d = n-1) is the
+# adjugate; the paper notes grad(det) is the cofactor matrix, (grad det)^T the
+# adjugate.
+#
+# BCHcoefs returns coefs[d] = (-1)^d chi_{N,d}, so coefs[d]'s gradient is
+# cofactors[d] = (-1)^d grad chi_{N,d}. Rewriting Theorem 5.1 in this convention
+# turns the closed form into a Horner / Faddeev-LeVerrier recursion on the
+# adjugate-expansion matrices S_e = sum_{i=0}^{e-1} coefs[e-1-i] A^i:
+#   S_e = coefs[e-1] * I + A @ S_{e-1},   cofactors[e] = -S_e.T   (S_0 = 0).
+# cofactors[N] * (-1)^N is the cofactor matrix d det / dA (see BCHcofactor), and
+# the S_e are the coefficient matrices of adj(lambda*I - A) = sum_e S_e lambda^{N-e}.
+def BCHcofactors(A):
+    N = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
+    coefs = BCHcoefs(A)
+
+    Id = np.eye(N, dtype=dtype)
+    cofactors = [np.zeros((N, N), dtype=dtype)]   # d coefs[0]/dA = d(1)/dA = 0
+    S = np.zeros((N, N), dtype=dtype)             # S_0 = 0
+    for e in range(1, N+1):
+        S = coefs[e-1] * Id + A @ S               # S_e = coefs[e-1] I + A S_{e-1}
+        cofactors.append(-S.T)
+
+    return cofactors
+
+
+# Bivariate Cayley-Hamilton recursion. Cofactor matrix (entrywise derivative of
+# the determinant): the last coefficient gradient scaled by (-1)^n, exactly as
+# BCHdet reads off BCHcoefs[-1].
+def BCHcofactor(A):
+    n = A.shape[0]
+    cofactors = BCHcofactors(A)
+    cofactor = cofactors[-1] * (-1)**n
+    return cofactor
+
+
 if __name__ == "__main__":
     import timeit
 
