@@ -1,7 +1,8 @@
 import numpy as np
 import sympy as sp
 from sympy.abc import lamda
-from .util import get_dtype, evector
+
+from .util import evector, get_dtype
 
 
 # Bareiss algorithm
@@ -147,6 +148,58 @@ def MPdet(A):
     coefs = MPcoefs(A)
     det = coefs[-1] * (-1)**n
     return det
+
+
+# Clow-based algorithm. Cofactor matrix by differentiating MPdet.
+#
+# MPdet computes det(A) = (-1)^n * r @ M^n @ s, where M = M(A) is built linearly
+# from the entries of A by DPmatrix. Differentiating w.r.t. an entry A[a, b]:
+#
+#   d det / d A[a,b] = (-1)^n * sum_{k=0}^{n-1} (r @ M^k) @ (dM/dA[a,b]) @ (M^{n-1-k} @ s)
+#
+# Collecting the left powers L_k = r @ M^k and right powers R_k = M^k @ s, and
+# W = sum_k outer(L_k, R_{n-1-k}), every cofactor is (-1)^n * <dM/dA[a,b], W>.
+# Since each M[u, v] is 0 or +/- A[a, b], W[u, v] is routed back to A[a, b]
+# through the same construction DPmatrix uses, with the matching sign.
+#
+# The result G[i, j] = d det / d A[i, j] is the cofactor matrix, i.e. the
+# transpose of the classical adjugate: adj(A) = G.T = det(A) * inv(A).T.T.
+def MPcofactor(A):
+    n = A.shape[0]
+    M, r, s = DPmatrix(A)
+    m = M.shape[0]
+    dtype = get_dtype(A)
+
+    # L[k] = r @ M^k, R[k] = M^k @ s, for k = 0..n-1
+    L = np.zeros((n, m), dtype=dtype)
+    R = np.zeros((n, m), dtype=dtype)
+    Mk_r, Mk_s = r, s
+    for k in range(n):
+        L[k] = Mk_r[0]
+        R[k] = Mk_s[:, 0]
+        Mk_r = Mk_r @ M
+        Mk_s = M @ Mk_s
+
+    # W[u, v] = sum_{k=0}^{n-1} L[k][u] * R[n-1-k][v]
+    W = np.zeros((m, m), dtype=dtype)
+    for k in range(n):
+        W += np.outer(L[k], R[n-1-k])
+
+    # Mirror DPmatrix's construction, routing W back to the gradient with sign.
+    G = np.zeros((n, n), dtype=dtype)
+    d = 0
+    for i in range(n+1):
+        p = 0
+        for j in range(i):
+            # M[d, p:p + n - j] = -A[j, j:]
+            G[j, j:] -= W[d, p:p + n - j]
+            p += n - j
+        if i < n:
+            # M[d + 1:d + n - i, d:d + n - i] = A[i + 1:, i:]
+            G[i + 1:, i:] += W[d + 1:d + n - i, d:d + n - i]
+        d += n - i
+
+    return (-1)**n * G
 
 
 # Clow-based algorithm. Explicit Matrix power method for the Dynamic Programming According to Length
@@ -299,23 +352,10 @@ def BCHcharpoly(A):
 if __name__ == "__main__":
     import timeit
 
-    for n in range(3, 5):
-        M = sp.symarray('a', (n, n))
-        assert CHcharpoly(M) == sp.Matrix(M).charpoly()
-        assert CVcharpoly(M) == sp.Matrix(M).charpoly()
-        assert FLcharpoly(M) == sp.Matrix(M).charpoly()
-        assert MPcharpoly(M) == sp.Matrix(M).charpoly()
-        assert DPcharpoly(M) == sp.Matrix(M).charpoly()
-        assert BCHcharpoly(M) == sp.Matrix(M).charpoly()
-
-    for n in [15, 20]:
-        A = np.random.randint(0, 100, size=(n, n), dtype=int).astype(object)
-        print(BRdet(A))
-        print(DPdet(A))
-        print(CVdet(A))
-        print(MPdet(A))
-        print(FLdet(A))
-        print(BCHdet(A))
+    # Correctness is covered by the test suite (see tests/test_determinant.py).
+    # This block only benchmarks the determinant methods.
+    n = 20
+    A = np.random.randint(0, 100, size=(n, n), dtype=int).astype(object)
 
     # print(timeit.repeat("numpy.linalg.det(A)", setup="import numpy; from __main__ import A", number=100, repeat=5))
     #: [0.0035009384155273, 0.0033931732177734, 0.0033941268920898, 0.0033800601959229, 0.0033988952636719]
