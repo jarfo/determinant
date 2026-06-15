@@ -48,7 +48,7 @@ a_{20} & a_{21} & a_{22} & 0 & 0 & 0 & 0 \\
 \end{array}\right]$$
   
 ### **Corollary** ###
-$$P_{A}(\lambda):=\mathrm{det}(\lambda I-A)=r\widetilde{(\lambda I-A)}^ns =r(\lambda \tilde{I}-\tilde{A})^ns = r^T(\lambda^{n}\tilde{I} + \lambda^{n-1}\tilde{A} + \cdots + \lambda\tilde{A}^{n-1} + \tilde{A}^n)s$$
+$$P_{A}(\lambda) := \mathrm{det}(\lambda I-A) = (-1)^{n} r^T\widetilde{(\lambda I-A)}^ns = (-1)^{n} r^T(\lambda \tilde{I}-\tilde{A})^ns = r^T(\lambda^{n}\tilde{A}^0 + \lambda^{n-1}\tilde{A}^1 + \cdots + \lambda\tilde{A}^{n-1} + \tilde{A}^n)s$$
 
 where $\tilde{I}$ is, for n=3,
 
