@@ -3,17 +3,26 @@
   
 
 ### **A simple expression for the determinant and characteristic polynomial** ###
-If we follow the Dynamic Programming approach of the clow-based method, we can obtain a simple Matrix power expression for the determinant and all the coefficients of the characteristic polynomial.
+Following the Dynamic Programming formulation of the clow-based method, the
+Mahajan–Vinay DP computes the signed sum of clow sequences of *every* length
+simultaneously. These signed sums are exactly the coefficients of the
+characteristic polynomial, so the whole computation is a single time-invariant
+linear recurrence — that is, repeated application of one fixed matrix.
 
-$$\mathrm{det}(A)=r\tilde{A}^ns$$
-
-$$P_{A}(\lambda):=\mathrm{det}(\lambda I-A)=q_{n} \lambda^{n}+q_{n-1} \lambda^{n-1}+\cdots+q_{1} \lambda+q_{0}$$
+$$P_{A}(\lambda) := \det(\lambda I - A) = q_{n}\lambda^{n} + q_{n-1}\lambda^{n-1} + \cdots + q_{1}\lambda + q_{0}$$
 
 with
 
-$$q_{i} = r\tilde{A}^{n-i}s$$
+$$q_{i} = r^T\tilde{A}^{n-i}s$$
 
-where $\tilde{A}$ is the 'transition matrix' of the dynamic algorithm as described in [Rote], $s$ corresponds to the initial conditions and $r$ to the final collecting node.
+where $\tilde{A}$ is the *transition matrix* of the dynamic algorithm (as
+described in [Rote]), $s$ encodes the initial conditions, and $r$ collects the
+final accumulator node.
+
+The determinant is the special case $i = 0$. Because $q_0$ is the constant term
+of $\det(\lambda I - A)$, it carries the standard sign:
+
+$$q_{0} = r^T\tilde{A}^{n}s = (-1)^{n}\det(A), \qquad\text{equivalently}\qquad \det(A) = (-1)^{n} r^T\tilde{A}^{n}s.$$
 
 For $n=3$ we have:
 
@@ -39,7 +48,7 @@ a_{20} & a_{21} & a_{22} & 0 & 0 & 0 & 0 \\
 \end{array}\right]$$
   
 ### **Corollary** ###
-$$P_{A}(\lambda):=\mathrm{det}(\lambda I-A)=r\widetilde{(\lambda I-A)}^ns =r(\lambda \tilde{I}-\tilde{A})^ns = r(\lambda^{n}+\tilde{A} \lambda^{n-1}+\cdots+\tilde{A}^{n-1} \lambda + \tilde{A}^n)s$$
+$$P_{A}(\lambda):=\mathrm{det}(\lambda I-A)=r\widetilde{(\lambda I-A)}^ns =r(\lambda \tilde{I}-\tilde{A})^ns = r^T(\lambda^{n}\tilde{I} + \lambda^{n-1}\tilde{A} + \cdots + \lambda\tilde{A}^{n-1} + \tilde{A}^n)s$$
 
 where $\tilde{I}$ is, for n=3,
 
