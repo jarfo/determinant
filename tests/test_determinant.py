@@ -233,7 +233,7 @@ def test_cofactors_resolvent_expansion(cofactors, n):
 
 
 @pytest.mark.parametrize("n", INTEGER_SIZES)
-@pytest.mark.parametrize("cofactor, cofactors", zip(COFACTOR_FUNCS, COFACTORS_FUNCS),
+@pytest.mark.parametrize("cofactor, cofactors", list(zip(COFACTOR_FUNCS, COFACTORS_FUNCS)),
                          ids=lambda f: f.__name__)
 def test_cofactor_reads_last_cofactors(cofactor, cofactors, n):
     # cofactor(A) == cofactors(A)[-1] * (-1)^n, mirroring MPdet/MPcoefs.
