@@ -18,6 +18,7 @@ precision), so large integer matrices can overflow.
 """
 
 import torch
+import torch.nn.functional as F
 
 
 def _evector(Bsz, length, ref, i=0):
@@ -30,6 +31,13 @@ def _convolve(a, v):
     # Batched full 1-D convolution: a (B, La), v (B, Lv) -> (B, La+Lv-1).
     Bsz, La = a.shape
     Lv = v.shape[-1]
+    if a.is_floating_point() or a.is_complex():
+        # conv1d cross-correlates per group; flip the kernel and pad with Lv-1
+        # zeros each side so the 'valid' output becomes a full convolution.
+        w = v.flip(-1).unsqueeze(1)  # (B, 1, Lv)
+        out = F.conv1d(a.unsqueeze(0), w, padding=Lv - 1, groups=Bsz)
+        return out.squeeze(0)
+    # conv1d is float-only; accumulate explicitly for exact-integer inputs.
     out = a.new_zeros((Bsz, La + Lv - 1))
     for j in range(Lv):
         out[:, j:j + La] += v[:, j:j + 1] * a
@@ -39,6 +47,12 @@ def _convolve(a, v):
 def _correlate_valid(a, v):
     # Batched numpy.correlate(., ., 'valid'): out[b,k] = sum_j a[b,k+j] v[b,j].
     Lv = v.shape[-1]
+    if a.is_floating_point() or a.is_complex():
+        # Per-group cross-correlation is exactly the 'valid' correlation.
+        Bsz = a.shape[0]
+        out = F.conv1d(a.unsqueeze(0), v.unsqueeze(1), groups=Bsz)
+        return out.squeeze(0)
+    # conv1d is float-only; accumulate explicitly for exact-integer inputs.
     Lout = a.shape[-1] - Lv + 1
     return torch.stack([(a[:, k:k + Lv] * v).sum(1) for k in range(Lout)], dim=1)
 

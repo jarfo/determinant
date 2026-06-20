@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 notebook = ["jupyter"]
 test = ["pytest"]
-torch = ["torch"]
+torch = ["torch", "python-flint"]
 
 [project.urls]
 Homepage = "https://github.com/jarfo/determinant"

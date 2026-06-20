@@ -17,9 +17,10 @@ Examples
 import argparse
 import timeit
 
+import numpy as np
 import torch
+from flint import fmpz_mat
 
-from determinant import determinant as det  # numpy/sympy reference (exact integers)
 from determinant import torch_determinant as td
 
 FLOAT_METHODS = [td.FLdet, td.DPdet, td.MPdet, td.CVdet, td.CHdet, td.BCHdet]
@@ -32,11 +33,19 @@ def min_ms(fn, A, number, repeat):
     return min(times) / number * 1e3
 
 
+def err_stats(out, ref):
+    """Relative-error statistics of `out` against the exact reference `ref`."""
+    diff = np.abs(out.astype(np.float64) - ref.astype(np.float64))
+    denom = np.abs(ref.astype(np.float64))
+    rel = diff / np.where(denom > 0, denom, 1.0)
+    return f"max {rel.max():.2e}  mean {rel.mean():.2e}"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--batch", type=int, default=64, help="batch size B (default 64)")
-    parser.add_argument("--n", type=int, default=12, help="matrix size (default 12)")
+    parser.add_argument("--batch", type=int, default=6400, help="batch size B (default 64)")
+    parser.add_argument("--n", type=int, default=30, help="matrix size (default 12)")
     parser.add_argument("--number", type=int, default=10, help="calls per timing run")
     parser.add_argument("--repeat", type=int, default=5, help="timing runs (min is reported)")
     parser.add_argument("--device", default="cpu", help="torch device (cpu, mps, cuda)")
@@ -51,47 +60,51 @@ def main():
     device = torch.device(args.device)
     A = torch.randint(-5, 6, (args.batch, args.n, args.n), dtype=torch.int64, device=device)
     Ad = A.float() if args.device == "mps" else A.double()
+    # Exact integer determinant (B,), per batch element, via python-flint.
+    ref = np.array([int(fmpz_mat(A[k].cpu().tolist()).det()) for k in range(args.batch)])
+
     if args.integer:
         methods = INT_METHODS
-        # Exact integer reference (B,), per batch element, via the numpy implementation.
-        ref = torch.tensor(
-            [int(det.DPdet(A[k].cpu().numpy().astype(object))) for k in range(args.batch)],
-            dtype=torch.int64, device=device)
     else:
         A = A.to(dtype=getattr(torch, args.dtype))
         methods = FLOAT_METHODS
-        ref = torch.linalg.det(Ad)  # (B,) batched float reference
 
-    print(f"batch={args.batch}  n={args.n}  dtype={A.dtype}  device={A.device}  "
-          f"number={args.number}  repeat={args.repeat}")
-    print(f"{'method':16s} {'min ms/call':>12s} {'us/matrix':>11s} {'vs linalg':>10s}   correct")
+    print(f"batch={args.batch}  n={args.n}  dtype={A.dtype}  device={A.device}  number={args.number}  repeat={args.repeat}")
+    err_col = "correct" if args.integer else "rel error (max/mean)"
+    print(f"{'method':16s} {'min ms/call':>12s} {'us/matrix':>11s} {'vs linalg':>10s}   {err_col}")
     print("-" * 66)
 
-    base = min_ms(torch.linalg.det, Ad if args.integer else A, args.number, args.repeat)
-    print(f"{'torch.linalg.det':16s} {base:12.4f} {base / args.batch * 1e3:11.4f} {1.0:9.2f}x   --")
+    base_in = Ad if args.integer else A
+    base = min_ms(torch.linalg.det, base_in, args.number, args.repeat)
+    base_out = torch.linalg.det(base_in).cpu().numpy()
+    print(f"{'torch.linalg.det':16s} {base:12.4f} {base / args.batch * 1e3:11.4f} {1.0:9.2f}x {err_stats(base_out, ref)}")
 
     for fn in methods:
         t = min_ms(fn, A, args.number, args.repeat)
-        out = fn(A).cpu()
+        out = fn(A)
+        if isinstance(out, torch.Tensor):
+            out = out.cpu().numpy()
         if args.integer:
-            ok = torch.equal(out, ref.cpu())
+            status = "OK" if np.array_equal(out, ref) else "MISMATCH"
         else:
-            ok = torch.allclose(out, ref.to(out.dtype).cpu(), rtol=1e-4, atol=1e-6)
-        print(f"{fn.__name__:16s} {t:12.4f} {t / args.batch * 1e3:11.4f} {t / base:9.2f}x   "
-              f"{'OK' if ok else 'MISMATCH'}")
+            status = err_stats(out, ref)
+        print(f"{fn.__name__:16s} {t:12.4f} {t / args.batch * 1e3:11.4f} {t / base:9.2f}x {status}")
 
     if args.cofactors:
         print("-" * 66)
-        eye = torch.eye(args.n, dtype=A.dtype, device=device).expand(args.batch, args.n, args.n)
+        eye = np.eye(args.n, dtype=object)
         for fn in COFACTOR_METHODS:
             t = min_ms(fn, A, args.number, args.repeat)
             prod = A @ fn(A).mT
+            if isinstance(prod, torch.Tensor):
+                prod = prod.cpu().numpy()
+            target = ref.reshape(-1, 1, 1) * eye
             if args.integer:
-                ok = torch.equal(prod, ref.view(-1, 1, 1) * eye)
+                status = "OK" if np.array_equal(prod, target) else "MISMATCH"
             else:
-                ok = torch.allclose(prod, ref.to(A.dtype).view(-1, 1, 1) * eye, rtol=1e-5, atol=1e-6)
+                status = err_stats(prod, target)
             print(f"{fn.__name__:16s} {t:12.4f} {t / args.batch * 1e3:11.4f} {t / base:9.2f}x   "
-                  f"{'OK' if ok else 'MISMATCH'}")
+                  f"{status}")
 
 
 if __name__ == "__main__":
