@@ -15,6 +15,9 @@ from determinant.determinant import (
     BCHcofactor,
     BCHcofactors,
     BCHdet,
+    BIcharpoly,
+    BIcoefs,
+    BIdet,
     BRdet,
     CHcharpoly,
     CHcoefs,
@@ -29,19 +32,25 @@ from determinant.determinant import (
     FLcharpoly,
     FLcoefs,
     FLdet,
+    KAcharpoly,
+    KAcoefs,
+    KAdet,
     MPcharpoly,
     MPcoefs,
     MPcofactor,
     MPcofactors,
     MPdet,
+    STcharpoly,
+    STcoefs,
+    STdet,
 )
 
 # Bareiss (BRdet) uses integer division, so it only handles exact-integer
 # input. Every other method also supports symbolic and floating-point input.
-DET_FUNCS = [BRdet, FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet]
-GENERAL_DET_FUNCS = [FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet]
-COEFS_FUNCS = [FLcoefs, DPcoefs, MPcoefs, CVcoefs, CHcoefs, BCHcoefs]
-CHARPOLY_FUNCS = [FLcharpoly, DPcharpoly, MPcharpoly, CVcharpoly, CHcharpoly, BCHcharpoly]
+DET_FUNCS = [BRdet, FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet, BIdet, STdet, KAdet]
+GENERAL_DET_FUNCS = [FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet, BIdet, STdet, KAdet]
+COEFS_FUNCS = [FLcoefs, DPcoefs, MPcoefs, CVcoefs, CHcoefs, BCHcoefs, BIcoefs, STcoefs, KAcoefs]
+CHARPOLY_FUNCS = [FLcharpoly, DPcharpoly, MPcharpoly, CVcharpoly, CHcharpoly, BCHcharpoly, BIcharpoly, STcharpoly, KAcharpoly]
 
 # Cofactor matrix (d det / dA) and the full list of coefficient gradients,
 # computed both via the matrix-power (MP) and Cayley-Hamilton (BCH) approaches.

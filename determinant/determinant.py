@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import sympy as sp
 from sympy.abc import lamda
@@ -411,3 +413,286 @@ def BCHcofactor(A):
     cofactors = BCHcofactors(A)
     cofactor = cofactors[-1] * (-1)**n
     return cofactor
+
+
+# Bird's algorithm.
+#
+# "A simple division-free algorithm for computing determinants", Richard S. Bird,
+# Information Processing Letters 111 (2011) 1072-1074.
+#
+# Define the operator mu on an n-by-n matrix X (upper triangular):
+#   mu(X)[i, j] = X[i, j]                 for i < j   (strict upper part copied)
+#   mu(X)[i, i] = -sum_{k>i} X[k, k]      (negated trailing diagonal sum)
+#   mu(X)[i, j] = 0                       for i > j
+# Iterating F_1 = A, F_{p+1} = mu(F_p) @ A collapses to a single nonzero entry:
+# F_n[0, 0] = (-1)^{n-1} det(A). Pure ring +/* throughout, so it is division-free
+# and works over any commutative ring. Unlike the clow/Cayley-Hamilton methods
+# here, this is a *direct* determinant algorithm (no characteristic-polynomial
+# coefficients), so BIdet does not route through a BIcoefs sweep.
+def _mu(X):
+    n = X.shape[0]
+    M = np.triu(X).copy()                          # diagonal + strict upper part
+    d = X.diagonal()
+    rev = np.cumsum(d[::-1])[::-1]                  # rev[i] = sum_{k>=i} d[k]
+    trail = np.zeros(n, dtype=X.dtype)
+    trail[:-1] = rev[1:]                            # trail[i] = sum_{k>=i+1} d[k]
+    np.fill_diagonal(M, -trail)
+    return M
+
+
+# Bird's algorithm
+def BIdet(A):
+    A = np.array(A)
+    n = A.shape[0]
+    F = A
+    for _ in range(n - 1):
+        F = _mu(F) @ A
+    return (-1)**(n - 1) * F[0, 0]
+
+
+# Bird's algorithm, characteristic-polynomial coefficients.
+#
+# Running Bird's iteration on the matrix pencil lambda*I - A keeps every entry a
+# polynomial in lambda; the final corner is F_n[0, 0] = (-1)^{n-1} det(lambda*I - A)
+# = (-1)^{n-1} P_A(lambda), so (-1)^{n-1} F_n[0, 0] is the (monic) characteristic
+# polynomial. Because lambda*I - A has degree <= 1, the matrix product collapses:
+#   mu(F) @ (lambda*I - A) = lambda * mu(F) - mu(F) @ A,
+# i.e. one shift in the lambda-degree axis plus an ordinary matrix product over A.
+# Entries are carried as ascending-power coefficient vectors (last axis); the
+# result is returned descending (leading coefficient first), like the others.
+def _mu_poly(F):
+    n = F.shape[0]
+    M = np.zeros_like(F)
+    iu = np.triu_indices(n, 1)
+    M[iu] = F[iu]                                  # strict upper part copied
+    diag = np.diagonal(F, axis1=0, axis2=1).T      # diag[i] = F[i, i, :]
+    rev = np.cumsum(diag[::-1], axis=0)[::-1]       # rev[i] = sum_{k>=i} diag[k]
+    for i in range(n - 1):
+        M[i, i] = -rev[i + 1]                       # -sum_{k>i} F[k, k, :]
+    return M
+
+
+# Bird's algorithm
+def BIcoefs(A):
+    n = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
+
+    # F[i, j, :] = polynomial in lambda (ascending powers); F = lambda*I - A.
+    F = np.zeros((n, n, 2), dtype=dtype)
+    F[:, :, 0] = -A
+    for i in range(n):
+        F[i, i, 1] = 1
+
+    for _ in range(n - 1):
+        muF = _mu_poly(F)
+        D = muF.shape[2]
+        newF = np.zeros((n, n, D + 1), dtype=dtype)
+        newF[:, :, 1:] = muF                        # lambda * mu(F)
+        newF[:, :, :D] -= np.einsum('ikd,kj->ijd', muF, A)  # - mu(F) @ A
+        F = newF
+
+    poly = (-1)**(n - 1) * F[0, 0]                  # ascending charpoly coeffs
+    return list(poly[::-1])                         # descending (leading first)
+
+
+# Bird's algorithm
+def BIcharpoly(A):
+    n = A.shape[0]
+    coefs = BIcoefs(A)
+    p = np.sum([c * lamda**(n-i) for i, c in enumerate(coefs)])
+    return sp.PurePoly(p, lamda)
+
+
+# Strassen's avoidance of divisions (power-series elimination).
+#
+# "Vermeidung von Divisionen", V. Strassen, J. Reine Angew. Math. 264 (1973).
+#
+# "On computing determinants of matrices without divisions", E. Kaltofen, ISSAC
+# 1992 -- applies the same power-series division-avoidance to a baby-step/
+# giant-step Krylov characteristic-polynomial method to lower the asymptotic
+# exponent. That speedup only helps with fast matrix multiplication, so it is
+# not reproduced here; this implements the underlying division-avoidance core.
+#
+# Key identity: det(I + zA) = sum_{k=0}^{n} E_k z^k, where E_k is the sum of the
+# k-by-k principal minors of A (E_0 = 1, E_n = det A), i.e. the characteristic-
+# polynomial coefficients. Since I + zA == I (mod z), Gaussian elimination over
+# the truncated power-series ring R[z]/(z^{n+1}) needs no pivoting and every
+# pivot is a unit (constant term 1); inverting a unit power series uses only
+# ring +/-/*, so the whole computation is division-free over any commutative
+# ring. A single elimination yields every E_k (hence the determinant and the
+# full characteristic polynomial) exactly, because det(I + zA) has degree <= n.
+def _ps_mul(a, b, T):
+    return np.convolve(a, b)[:T]
+
+
+def _ps_inv(p, T):
+    # Power-series inverse of p with unit constant term p[0] == 1.
+    b = np.zeros(T, dtype=p.dtype)
+    b[0] = 1
+    for k in range(1, T):
+        acc = 0
+        for j in range(1, k + 1):
+            acc = acc + p[j] * b[k - j]
+        b[k] = -acc
+    return b
+
+
+# Strassen's avoidance of divisions
+def STcoefs(A):
+    n = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
+    T = n + 1
+
+    # M[i, j] = delta_ij + z*A[i, j], ascending coeff vectors mod z^{n+1}.
+    M = np.zeros((n, n, T), dtype=dtype)
+    M[:, :, 1] = A
+    for i in range(n):
+        M[i, i, 0] = 1
+
+    det = np.zeros(T, dtype=dtype)              # product of pivots == det(I + zA)
+    det[0] = 1
+    for i in range(n):
+        piv = M[i, i]
+        det = _ps_mul(det, piv, T)
+        pinv = _ps_inv(piv, T)
+        for j in range(i + 1, n):
+            factor = _ps_mul(M[j, i], pinv, T)
+            for k in range(i, n):
+                M[j, k] = M[j, k] - _ps_mul(factor, M[i, k], T)
+
+    # det == [E_0, ..., E_n] ascending; charpoly coefs (descending) are (-1)^k E_k.
+    return [(-1)**k * det[k] for k in range(T)]
+
+
+# Strassen's avoidance of divisions
+def STdet(A):
+    n = A.shape[0]
+    coefs = STcoefs(A)
+    det = coefs[-1] * (-1)**n
+    return det
+
+
+# Strassen's avoidance of divisions
+def STcharpoly(A):
+    n = A.shape[0]
+    coefs = STcoefs(A)
+    p = np.sum([c * lamda**(n-i) for i, c in enumerate(coefs)])
+    return sp.PurePoly(p, lamda)
+
+
+# Kaltofen's algorithm (baby-step/giant-step Krylov, division-free).
+#
+# "On computing determinants of matrices without divisions", E. Kaltofen, ISSAC
+# 1992 -- a Wiedemann/Krylov characteristic-polynomial computation made division-
+# free by Strassen's power-series technique (see STcoefs), with a baby-step/
+# giant-step recombination that lowers the asymptotic cost (its speedup needs
+# fast matrix multiplication, so it is not realized by this reference port).
+#
+# The pencil B(z) = S + z(A - S), with S the nilpotent shift (super-diagonal
+# ones), interpolates B(0) = S and B(1) = A. S is a single Jordan block, so the
+# Krylov sequence a_k(z) = e_1^T B(z)^k e_n has a_k(0) = delta_{k, n-1}: the
+# Hankel matrix [a_{i+j}] is the exchange matrix at z=0, hence a unit in
+# R[z]/(z^{n+1}). Reversing its rows makes that the identity, so the Hankel
+# solve runs by Gauss-Jordan with unit (constant-term-1) pivots -- division-free
+# and valid for *every* A (not just generic ones). The solve yields the
+# coefficients c_i(z) of the monic characteristic polynomial of B(z); evaluating
+# at z = 1 (summing each c_i's coefficients) gives the characteristic polynomial
+# of A. _ps_mul / _ps_inv are the power-series helpers shared with STcoefs.
+def _ps_matmul(M1, M2, T):
+    # (A,B,T) . (B,C,T) -> (A,C,T): the z^d coefficient of the poly-matrix
+    # product is sum_{d1+d2=d} M1[:, :, d1] @ M2[:, :, d2].
+    A, C = M1.shape[0], M2.shape[1]
+    res = np.zeros((A, C, T), dtype=M1.dtype)
+    for d1 in range(T):
+        for d2 in range(T - d1):
+            res[:, :, d1 + d2] = res[:, :, d1 + d2] + M1[:, :, d1] @ M2[:, :, d2]
+    return res
+
+
+def _hankel_solve(a, n, T):
+    # Solve H c = b over R[z]/(z^T): H[i,j] = a[i+j], b[i] = -a[n+i]. Row-reverse
+    # so the z=0 system is the identity, then Gauss-Jordan with unit pivots.
+    H = np.zeros((n, n, T), dtype=a.dtype)
+    b = np.zeros((n, T), dtype=a.dtype)
+    for i in range(n):
+        for j in range(n):
+            H[i, j] = a[i + j]
+        b[i] = -a[n + i]
+    H = H[::-1].copy()
+    b = b[::-1].copy()
+    for k in range(n):
+        inv_piv = _ps_inv(H[k, k], T)
+        for j in range(n):
+            H[k, j] = _ps_mul(H[k, j], inv_piv, T)
+        b[k] = _ps_mul(b[k], inv_piv, T)
+        for i in range(n):
+            if i != k:
+                factor = H[i, k].copy()             # copy: the j-loop overwrites H[i,k]
+                for j in range(n):
+                    H[i, j] = H[i, j] - _ps_mul(factor, H[k, j], T)
+                b[i] = b[i] - _ps_mul(factor, b[k], T)
+    return b                                         # b[i] = c_i(z), coeff of x^i
+
+
+# Kaltofen's algorithm
+def KAcoefs(A):
+    n = A.shape[0]
+    dtype = get_dtype(A)
+    A = np.array(A, dtype=dtype)
+    T = n + 1
+
+    # B(z) = S + z(A - S), S the nilpotent shift (super-diagonal ones).
+    B = np.zeros((n, n, T), dtype=dtype)
+    B[:, :, 1] = A
+    for i in range(n - 1):
+        B[i, i + 1, 0] = 1
+        B[i, i + 1, 1] = A[i, i + 1] - 1
+
+    u = np.zeros((1, n, T), dtype=dtype)            # u = e_1^T
+    v = np.zeros((n, 1, T), dtype=dtype)            # v = e_n
+    u[0, 0, 0] = 1
+    v[n - 1, 0, 0] = 1
+
+    limit = 2 * n
+    r = math.ceil(math.sqrt(limit))
+    s = math.ceil(limit / r)
+
+    # Baby steps v_j = B^j v; giant steps u_k = u^T (B^r)^k.
+    v_steps = [v]
+    for _ in range(1, r):
+        v_steps.append(_ps_matmul(B, v_steps[-1], T))
+    Z = B
+    for _ in range(r - 1):
+        Z = _ps_matmul(Z, B, T)
+    u_steps = [u]
+    for _ in range(1, s):
+        u_steps.append(_ps_matmul(u_steps[-1], Z, T))
+
+    a = np.zeros((limit, T), dtype=dtype)           # a_{rk+j} = u^T B^{rk+j} v
+    for k in range(s):
+        for j in range(r):
+            idx = k * r + j
+            if idx < limit:
+                a[idx] = _ps_matmul(u_steps[k], v_steps[j], T)[0, 0]
+
+    c = _hankel_solve(a, n, T)
+    # charpoly_B(x) = x^n + sum_i c_i(z) x^i; evaluate z=1, return descending.
+    return [1] + [np.sum(c[i]) for i in range(n - 1, -1, -1)]
+
+
+# Kaltofen's algorithm
+def KAdet(A):
+    n = A.shape[0]
+    coefs = KAcoefs(A)
+    det = coefs[-1] * (-1)**n
+    return det
+
+
+# Kaltofen's algorithm
+def KAcharpoly(A):
+    n = A.shape[0]
+    coefs = KAcoefs(A)
+    p = np.sum([c * lamda**(n-i) for i, c in enumerate(coefs)])
+    return sp.PurePoly(p, lamda)

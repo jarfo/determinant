@@ -71,4 +71,7 @@ The [*DPmatrix*](https://github.com/jarfo/determinant/blob/ad5c47832fb23dbb50450
 - [Mahajan M., Vinay V. (1998) Determinant: Old algorithms, new insights. In: Arnborg S., Ivansson L. (eds) Algorithm Theory — SWAT'98. SWAT 1998. Lecture Notes in Computer Science, vol 1432. Springer, Berlin, Heidelberg.](https://doi.org/10.1007/BFb0054375)
 - [Rote G. (2001) Division-Free Algorithms for the Determinant and the Pfaffian: Algebraic and Combinatorial Approaches. In: Alt H. (eds) Computational Discrete Mathematics. Lecture Notes in Computer Science, vol 2122. Springer, Berlin, Heidelberg.](https://doi.org/10.1007/3-540-45506-X_9)
 - [Ikenmeyer C. (2025) On the gradient of the coefficient of the characteristic polynomial. arXiv:2511.04954.](https://arxiv.org/abs/2511.04954)
+- [Bird R.S. (2011) A simple division-free algorithm for computing determinants. Information Processing Letters, 111(21–22), 1072–1074.](https://doi.org/10.1016/j.ipl.2011.08.006)
+- [Strassen V. (1973) Vermeidung von Divisionen. Journal für die reine und angewandte Mathematik, 264, 184–202.](https://doi.org/10.1515/crll.1973.264.184)
+- [Kaltofen E. (1992) On computing determinants of matrices without divisions. In: Proceedings of the 1992 International Symposium on Symbolic and Algebraic Computation (ISSAC '92), 342–349. ACM.](https://doi.org/10.1145/143242.143350)
 

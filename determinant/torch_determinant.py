@@ -17,6 +17,8 @@ the scalar port, integer tensors are fixed-width ``int64`` (no arbitrary
 precision), so large integer matrices can overflow.
 """
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -364,6 +366,224 @@ def BCHcofactor(A):
     return cofactor
 
 
+# Bird's algorithm (Bird 2011). Direct division-free determinant: iterate
+# F <- mu(F) @ A from F = A, where mu(X) is upper triangular with the strict
+# upper part copied and mu(X)[i, i] = -sum_{k>i} X[k, k]; then
+# F_n[0, 0] = (-1)^{n-1} det(A). See determinant.BIdet.
+def _mu(X):
+    M = torch.triu(X).clone()                       # diagonal + strict upper
+    d = torch.diagonal(X, dim1=-2, dim2=-1)         # (B, n)
+    rev = torch.flip(torch.cumsum(torch.flip(d, [-1]), -1), [-1])  # rev[i]=sum_{k>=i}
+    trail = torch.zeros_like(d)
+    trail[:, :-1] = rev[:, 1:]                       # trail[i] = sum_{k>=i+1} d[k]
+    M.diagonal(dim1=-2, dim2=-1).copy_(-trail)
+    return M
+
+
+# Bird's algorithm
+def BIdet(A):
+    n = A.shape[-1]
+    F = A
+    for _ in range(n - 1):
+        F = _mu(F) @ A
+    return (-1)**(n - 1) * F[:, 0, 0]
+
+
+# Bird's algorithm, characteristic-polynomial coefficients. Run the iteration on
+# the pencil lambda*I - A, carrying each entry as an ascending-power coefficient
+# vector (last axis). mu(F) @ (lambda*I - A) = lambda*mu(F) - mu(F)@A collapses
+# to a degree shift plus a matmul over A. See determinant.BIcoefs.
+def _mu_poly(F):
+    Bsz, n, _, D = F.shape
+    M = torch.zeros_like(F)
+    iu = torch.triu_indices(n, n, 1, device=F.device)
+    M[:, iu[0], iu[1], :] = F[:, iu[0], iu[1], :]    # strict upper part copied
+    diag = torch.diagonal(F, dim1=1, dim2=2).permute(0, 2, 1)  # (B, n, D)
+    rev = torch.flip(torch.cumsum(torch.flip(diag, [1]), 1), [1])  # rev[i]=sum_{k>=i}
+    trail = torch.zeros_like(diag)
+    trail[:, :-1, :] = rev[:, 1:, :]                 # trail[i] = sum_{k>i} F[k,k,:]
+    idx = torch.arange(n, device=F.device)
+    M[:, idx, idx, :] = -trail
+    return M
+
+
+# Bird's algorithm
+def BIcoefs(A):
+    Bsz, n, _ = A.shape
+    F = A.new_zeros((Bsz, n, n, 2))
+    F[..., 0] = -A
+    idx = torch.arange(n, device=A.device)
+    F[:, idx, idx, 1] = 1
+    for _ in range(n - 1):
+        muF = _mu_poly(F)
+        D = muF.shape[-1]
+        newF = A.new_zeros((Bsz, n, n, D + 1))
+        newF[..., 1:] = muF                          # lambda * mu(F)
+        newF[..., :D] -= torch.einsum('bikd,bkj->bijd', muF, A)  # - mu(F) @ A
+        F = newF
+
+    poly = (-1)**(n - 1) * F[:, 0, 0, :]             # (B, n+1) ascending
+    return torch.flip(poly, [-1])                    # descending (leading first)
+
+
+# Strassen's avoidance of divisions (power-series elimination); Kaltofen 1992
+# adds a baby-step/giant-step Krylov speedup, not reproduced here. Eliminate
+# I + zA over R[z]/(z^{n+1}); pivots are units (constant term 1) since
+# I + zA == I (mod z), so pivot inversion is a division-free power-series
+# inverse. det(I + zA) = sum_k E_k z^k gives the determinant and full charpoly.
+# See determinant.STcoefs.
+def _ps_mul(a, b, T):
+    # Truncated power-series product: a (B, Ta), b (B, Tb) -> (B, T).
+    Ta = a.shape[-1]
+    Tb = b.shape[-1]
+    out = a.new_zeros((a.shape[0], T))
+    for j in range(Tb):
+        L = min(Ta, T - j)
+        if L > 0:
+            out[:, j:j + L] += b[:, j:j + 1] * a[:, :L]
+    return out
+
+
+def _ps_inv(p, T):
+    # Power-series inverse with unit constant term p[:, 0] == 1.
+    b = p.new_zeros((p.shape[0], T))
+    b[:, 0] = 1
+    for k in range(1, T):
+        acc = p.new_zeros(p.shape[0])
+        for j in range(1, k + 1):
+            acc = acc + p[:, j] * b[:, k - j]
+        b[:, k] = -acc
+    return b
+
+
+# Strassen's avoidance of divisions
+def STcoefs(A):
+    Bsz, n, _ = A.shape
+    T = n + 1
+
+    M = A.new_zeros((Bsz, n, n, T))
+    M[:, :, :, 1] = A
+    idx = torch.arange(n, device=A.device)
+    M[:, idx, idx, 0] = 1
+
+    det = A.new_zeros((Bsz, T))
+    det[:, 0] = 1
+    for i in range(n):
+        piv = M[:, i, i, :]
+        det = _ps_mul(det, piv, T)
+        pinv = _ps_inv(piv, T)
+        for j in range(i + 1, n):
+            factor = _ps_mul(M[:, j, i, :], pinv, T)
+            for k in range(i, n):
+                M[:, j, k, :] = M[:, j, k, :] - _ps_mul(factor, M[:, i, k, :], T)
+
+    # det == [E_0, ..., E_n]; charpoly coefs (leading first) are (-1)^k E_k.
+    signs = torch.tensor([(-1)**k for k in range(T)], dtype=A.dtype, device=A.device)
+    return det * signs
+
+
+# Strassen's avoidance of divisions
+def STdet(A):
+    n = A.shape[-1]
+    coefs = STcoefs(A)
+    det = coefs[:, -1] * (-1)**n
+    return det
+
+
+# Kaltofen's algorithm (baby-step/giant-step Krylov, division-free). Wiedemann
+# characteristic-polynomial computation over the pencil B(z) = S + z(A - S) (S
+# the nilpotent shift), made division-free by Strassen's power-series technique:
+# the Hankel matrix of a_k(z) = e_1^T B(z)^k e_n is the exchange matrix at z=0,
+# so (after row reversal) the solve has unit pivots. See determinant.KAcoefs.
+def _ps_matmul(M1, M2, T):
+    # (B,A,K,T) . (B,K,C,T) -> (B,A,C,T): z^d coeff is sum_{d1+d2=d} of the
+    # batched matrix product M1[..., d1] @ M2[..., d2].
+    Bsz, Arows = M1.shape[0], M1.shape[1]
+    Ccols = M2.shape[2]
+    res = M1.new_zeros((Bsz, Arows, Ccols, T))
+    for d1 in range(T):
+        for d2 in range(T - d1):
+            res[:, :, :, d1 + d2] = res[:, :, :, d1 + d2] + M1[:, :, :, d1] @ M2[:, :, :, d2]
+    return res
+
+
+def _hankel_solve(a, n, T):
+    # Solve H c = b over R[z]/(z^T): H[i,j]=a[i+j], b[i]=-a[n+i]. Row-reverse so
+    # the z=0 system is the identity, then Gauss-Jordan with unit pivots.
+    H = a.new_zeros((a.shape[0], n, n, T))
+    b = a.new_zeros((a.shape[0], n, T))
+    for i in range(n):
+        for j in range(n):
+            H[:, i, j, :] = a[:, i + j, :]
+        b[:, i, :] = -a[:, n + i, :]
+    H = H.flip(1).clone()
+    b = b.flip(1).clone()
+    for k in range(n):
+        inv_piv = _ps_inv(H[:, k, k, :], T)
+        for j in range(n):
+            H[:, k, j, :] = _ps_mul(H[:, k, j, :], inv_piv, T)
+        b[:, k, :] = _ps_mul(b[:, k, :], inv_piv, T)
+        for i in range(n):
+            if i != k:
+                factor = H[:, i, k, :].clone()       # clone: the j-loop overwrites H[:,i,k]
+                for j in range(n):
+                    H[:, i, j, :] = H[:, i, j, :] - _ps_mul(factor, H[:, k, j, :], T)
+                b[:, i, :] = b[:, i, :] - _ps_mul(factor, b[:, k, :], T)
+    return b                                          # b[:, i] = c_i(z)
+
+
+# Kaltofen's algorithm
+def KAcoefs(A):
+    Bsz, n, _ = A.shape
+    T = n + 1
+
+    B = A.new_zeros((Bsz, n, n, T))
+    B[:, :, :, 1] = A
+    for i in range(n - 1):
+        B[:, i, i + 1, 0] = 1
+        B[:, i, i + 1, 1] = A[:, i, i + 1] - 1
+
+    u = A.new_zeros((Bsz, 1, n, T))
+    v = A.new_zeros((Bsz, n, 1, T))
+    u[:, 0, 0, 0] = 1
+    v[:, n - 1, 0, 0] = 1
+
+    limit = 2 * n
+    r = math.ceil(math.sqrt(limit))
+    s = math.ceil(limit / r)
+
+    v_steps = [v]
+    for _ in range(1, r):
+        v_steps.append(_ps_matmul(B, v_steps[-1], T))
+    Z = B
+    for _ in range(r - 1):
+        Z = _ps_matmul(Z, B, T)
+    u_steps = [u]
+    for _ in range(1, s):
+        u_steps.append(_ps_matmul(u_steps[-1], Z, T))
+
+    a = A.new_zeros((Bsz, limit, T))
+    for k in range(s):
+        for j in range(r):
+            idx = k * r + j
+            if idx < limit:
+                a[:, idx, :] = _ps_matmul(u_steps[k], v_steps[j], T)[:, 0, 0, :]
+
+    c = _hankel_solve(a, n, T)
+    coefs = [A.new_ones(Bsz)]
+    for i in range(n - 1, -1, -1):
+        coefs.append(c[:, i, :].sum(dim=1))
+    return torch.stack(coefs, dim=1)
+
+
+# Kaltofen's algorithm
+def KAdet(A):
+    n = A.shape[-1]
+    coefs = KAcoefs(A)
+    det = coefs[:, -1] * (-1)**n
+    return det
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     Bsz, n = 4, 6
@@ -372,13 +592,13 @@ if __name__ == "__main__":
     A = torch.randn(Bsz, n, n, dtype=torch.float64)
     ref = torch.linalg.det(A)
     print(f"reference torch.linalg.det = {ref.tolist()}")
-    for f in (FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet):
+    for f in (FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet, BIdet, STdet, KAdet):
         err = float((f(A) - ref).abs().max())
         print(f"  {f.__name__:7s} max|err| = {err:.2e}")
 
     # Exact integer: all methods should agree (small n to avoid int64 overflow).
     Ai = torch.randint(-5, 6, (Bsz, n, n))
-    dets = torch.stack([f(Ai) for f in (BRdet, FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet)])
+    dets = torch.stack([f(Ai) for f in (BRdet, FLdet, DPdet, MPdet, CVdet, CHdet, BCHdet, BIdet, STdet, KAdet)])
     print("integer determinants agree across methods:", bool((dets == dets[0]).all()))
 
     # Cofactor identity: A @ cofactor(A).mT == det(A) * I, per batch element.

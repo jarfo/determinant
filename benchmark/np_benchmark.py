@@ -3,7 +3,7 @@ import timeit
 import numpy as np
 from flint import fmpz_mat
 
-from determinant import BCHdet, BRdet, CVdet, DPdet, FLdet, MPdet
+from determinant import BCHdet, BIdet, BRdet, CVdet, DPdet, FLdet, KAdet, MPdet, STdet
 
 
 def benchmark():
@@ -16,6 +16,9 @@ def benchmark():
     print("MPdet(A)", timeit.repeat("MPdet(A)", setup="from __main__ import MPdet, A", number=10, repeat=5))
     print("FLdet(A)", timeit.repeat("FLdet(A)", setup="from __main__ import FLdet, A", number=10, repeat=5))
     print("BCHdet(A)", timeit.repeat("BCHdet(A)", setup="from __main__ import BCHdet, A", number=10, repeat=5))
+    print("BIdet(A)", timeit.repeat("BIdet(A)", setup="from __main__ import BIdet, A", number=10, repeat=5))
+    print("STdet(A)", timeit.repeat("STdet(A)", setup="from __main__ import STdet, A", number=10, repeat=5))
+    print("KAdet(A)", timeit.repeat("KAdet(A)", setup="from __main__ import KAdet, A", number=10, repeat=5))
 
 
 if __name__ == "__main__":

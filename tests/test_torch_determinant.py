@@ -15,9 +15,9 @@ from determinant import determinant as ref          # noqa: E402  numpy/sympy re
 from determinant import torch_determinant as td      # noqa: E402  batched torch port under test
 
 # Bareiss (BRdet) uses integer division, so it is exact-integer only.
-DET_FUNCS = [td.BRdet, td.FLdet, td.DPdet, td.MPdet, td.CVdet, td.CHdet, td.BCHdet]
-GENERAL_DET_FUNCS = [td.FLdet, td.DPdet, td.MPdet, td.CVdet, td.CHdet, td.BCHdet]
-COEFS_FUNCS = [td.FLcoefs, td.DPcoefs, td.MPcoefs, td.CVcoefs, td.CHcoefs, td.BCHcoefs]
+DET_FUNCS = [td.BRdet, td.FLdet, td.DPdet, td.MPdet, td.CVdet, td.CHdet, td.BCHdet, td.BIdet, td.STdet, td.KAdet]
+GENERAL_DET_FUNCS = [td.FLdet, td.DPdet, td.MPdet, td.CVdet, td.CHdet, td.BCHdet, td.BIdet, td.STdet, td.KAdet]
+COEFS_FUNCS = [td.FLcoefs, td.DPcoefs, td.MPcoefs, td.CVcoefs, td.CHcoefs, td.BCHcoefs, td.BIcoefs, td.STcoefs, td.KAcoefs]
 COFACTOR_FUNCS = [td.MPcofactor, td.BCHcofactor]
 COFACTORS_FUNCS = [td.MPcofactors, td.BCHcofactors]
 
