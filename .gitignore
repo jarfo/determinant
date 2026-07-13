@@ -11,3 +11,9 @@ __pycache__/
 
 # Python virtual environments
 .venv/
+
+# Local reference papers (copyrighted PDFs)
+references/
+
+# uv lockfile
+uv.lock
