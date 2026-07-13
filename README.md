@@ -87,10 +87,10 @@ $$\det(\lambda I-\tilde{A}) = \lambda^{\,n+1}\prod_{i=1}^{n-1}\det\big(\lambda I
 
 — the eigenvalue $0$ with multiplicity $n+1$, together with the spectra of
 $A^{(1)},\dots,A^{(n-1)}$. Clearing the denominator of the resolvent through
-$\operatorname{adj}(I-\lambda\tilde{A}) = \det(I-\lambda\tilde{A})\,(I-\lambda\tilde{A})^{-1}$
+$\mathrm{adj}(I-\lambda\tilde{A}) = \det(I-\lambda\tilde{A})\,(I-\lambda\tilde{A})^{-1}$
 then gives the closed form
 
-$$r^T\operatorname{adj}(I-\lambda\tilde{A})\,s = \det(I-\lambda A)\,\det(I-\lambda\tilde{A}) = \prod_{i=0}^{n-1}\det\big(I-\lambda A^{(i)}\big),$$
+$$r^T\mathrm{adj}(I-\lambda\tilde{A})\,s = \det(I-\lambda A)\,\det(I-\lambda\tilde{A}) = \prod_{i=0}^{n-1}\det\big(I-\lambda A^{(i)}\big),$$
 
 and matching powers of $\lambda$ yields explicit convolution relations between
 the characteristic-polynomial coefficients of $A$ and those of its trailing
